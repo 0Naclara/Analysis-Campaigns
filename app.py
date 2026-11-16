@@ -14,7 +14,7 @@ st.set_page_config(page_title="Simulador Preditivo de Campanhas", layout="wide")
 # 1. Carregamento dos dados
 @st.cache_data
 def carregar_dados():
-    return pd.read_csv("campanhas.csv")
+    return pd.read_csv("data/campaigns_dataset.csv")
 
 df = carregar_dados()
 
