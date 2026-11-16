@@ -11,6 +11,17 @@ from sklearn.metrics import r2_score
 
 st.set_page_config(page_title="Simulador Preditivo de Campanhas", layout="wide")
 
+# Carrega o estilo externo
+def carregar_css(arquivo):
+    with open(arquivo, "r", encoding="utf-8") as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+
+carregar_css("style.css")
+
+# Paleta dos gráficos Plotly
+COR_ROSA_PRINCIPAL = "#f72585"
+PALETA_GRAFICO = ["#f72585", "#d9048e", "#b5179e", "#7209b7", "#9d4edd", "#ff70a6"]
+
 # 1. Carregamento dos dados
 @st.cache_data
 def carregar_dados():
@@ -20,7 +31,7 @@ def carregar_dados():
 
 df = carregar_dados()
 
-# 2. Seleção automática de todas as variáveis pré-campanha disponíveis no CSV
+# 2. Seleção automática das variáveis pré-campanha
 COLUNAS_POS_CAMPANHA = {
     "impressions", "clicks", "conversions", "revenue", "profit",
     "ctr", "cpc", "cpa", "roas", "conversion_rate", "roi"
@@ -40,7 +51,7 @@ for col in df.columns:
 
 TARGETS = ["conversions", "revenue"]
 
-# 3. Treinamento com modelos independentes para Conversões e Receita
+# 3. Treinamento do Modelo
 @st.cache_resource
 def treinar_modelo(dados, cols_cat, cols_num):
     X = dados[cols_cat + cols_num]
@@ -72,14 +83,20 @@ def treinar_modelo(dados, cols_cat, cols_num):
 
 modelo, r2_conv, r2_rev = treinar_modelo(df, features_cat, features_num)
 
-# 4. Barra Lateral (Inputs principais + extras recolhíveis)
+# 4. Barra Lateral Enxuta
 st.sidebar.header("Parâmetros da Campanha")
 valores_usuario = {}
 
-principais_cat = ["platform", "campaign_objective", "audience_interest_category", "creative_format"]
-for col in principais_cat:
+labels_pt = {
+    "platform": "Plataforma",
+    "campaign_objective": "Objetivo da Campanha",
+    "audience_interest_category": "Interesse do Público",
+    "creative_format": "Formato do Criativo"
+}
+
+for col, rotulo in labels_pt.items():
     if col in features_cat:
-        valores_usuario[col] = st.sidebar.selectbox(col.replace("_", " ").title(), sorted(df[col].dropna().unique()))
+        valores_usuario[col] = st.sidebar.selectbox(rotulo, sorted(df[col].dropna().unique()))
 
 valores_usuario["ad_spend"] = st.sidebar.slider(
     "Orçamento Investido (US$)",
@@ -89,20 +106,13 @@ valores_usuario["ad_spend"] = st.sidebar.slider(
     step=50.0,
 )
 
-extras_cat = [c for c in features_cat if c not in principais_cat]
-extras_num = [c for c in features_num if c != "ad_spend"]
+for col in features_cat:
+    if col not in valores_usuario:
+        valores_usuario[col] = df[col].mode()[0]
 
-if extras_cat or extras_num:
-    with st.sidebar.expander("Mais parâmetros da campanha"):
-        for col in extras_cat:
-            valores_usuario[col] = st.selectbox(col.replace("_", " ").title(), sorted(df[col].dropna().unique()))
-        for col in extras_num:
-            valores_usuario[col] = st.number_input(
-                col.replace("_", " ").title(),
-                min_value=float(df[col].min()),
-                max_value=float(df[col].max()),
-                value=float(df[col].median()),
-            )
+for col in features_num:
+    if col not in valores_usuario:
+        valores_usuario[col] = float(df[col].median())
 
 st.sidebar.markdown("---")
 st.sidebar.caption(f"Precisão Receita ($R^2$): **{r2_rev:.1%}**")
@@ -147,20 +157,4 @@ with graf1:
         x="ad_spend",
         y="Receita Prevista (US$)",
         labels={"ad_spend": "Orçamento (US$)"},
-        title=f"Projeção para {valores_usuario.get('platform', '')} ({valores_usuario.get('creative_format', '')})",
-    )
-    st.plotly_chart(fig_curva, use_container_width=True)
-
-with graf2:
-    st.subheader("ROAS Médio Histórico por Plataforma")
-    df_plat = df.groupby("platform", as_index=False)["roas"].mean().sort_values("roas", ascending=False)
-    fig_bar = px.bar(
-        df_plat,
-        x="platform",
-        y="roas",
-        color="platform",
-        labels={"platform": "Plataforma", "roas": "ROAS Médio"},
-        title="Comparativo Geral da Base Histórica",
-    )
-    fig_bar.update_layout(showlegend=False)
-    st.plotly_chart(fig_bar, use_container_width=True)
+        title=f"Pro
