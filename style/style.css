@@ -1,0 +1,50 @@
+:root {
+    --rosa-principal: #f72585;
+    --roxo-principal: #7209b7;
+    --fundo-inicio: #14071c;
+    --fundo-meio: #2b0f3b;
+    --fundo-fim: #4a1248;
+}
+
+/* Fundo principal com gradiente */
+[data-testid="stAppViewContainer"] {
+    background: linear-gradient(135deg, var(--fundo-inicio) 0%, var(--fundo-meio) 50%, var(--fundo-fim) 100%);
+    color: #ffffff;
+}
+
+/* Barra superior transparente */
+[data-testid="stHeader"] {
+    background: rgba(0, 0, 0, 0);
+}
+
+/* Barra lateral */
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #0f0514 0%, #210b2e 100%);
+    border-right: 1px solid rgba(247, 37, 133, 0.25);
+}
+
+/* Cartões de métricas */
+[data-testid="stMetric"] {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(247, 37, 133, 0.4);
+    border-radius: 14px;
+    padding: 16px 20px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25);
+}
+
+[data-testid="stMetricLabel"] {
+    color: #f3c6e8 !important;
+}
+
+[data-testid="stMetricValue"] {
+    color: #ffffff !important;
+}
+
+/* Cor da barra deslizante (Slider) */
+div.stSlider > div[data-baseweb="slider"] > div > div > div[role="slider"] {
+    background-color: var(--rosa-principal) !important;
+}
+
+div.stSlider > div[data-baseweb="slider"] > div > div > div:first-child {
+    background: linear-gradient(90deg, var(--roxo-principal), var(--rosa-principal)) !important;
+}
