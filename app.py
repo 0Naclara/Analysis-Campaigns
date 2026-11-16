@@ -3,12 +3,12 @@ import pandas as pd
 import plotly.express as px
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.multioutput import MultiOutputRegressor
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import r2_score
 
-# Configuração inicial da página
 st.set_page_config(page_title="Simulador Preditivo de Campanhas", layout="wide")
 
 # 1. Carregamento dos dados
@@ -20,56 +20,68 @@ def carregar_dados():
 
 df = carregar_dados()
 
-# Definição das colunas do modelo
-FEATURES_CAT = ["platform", "campaign_objective", "audience_interest_category", "creative_format"]
-FEATURE_NUM = ["ad_spend"]
+# 2. Seleção automática de todas as variáveis pré-campanha disponíveis no CSV
+COLUNAS_POS_CAMPANHA = {
+    "impressions", "clicks", "conversions", "revenue", "profit",
+    "ctr", "cpc", "cpa", "roas", "conversion_rate", "roi"
+}
+
+features_cat = []
+features_num = []
+
+for col in df.columns:
+    col_lower = col.lower()
+    if col_lower in COLUNAS_POS_CAMPANHA or col_lower == "id" or col_lower.endswith("_id"):
+        continue
+    if pd.api.types.is_numeric_dtype(df[col]):
+        features_num.append(col)
+    elif df[col].nunique() <= 30:
+        features_cat.append(col)
+
 TARGETS = ["conversions", "revenue"]
 
-# Validação rápida caso alguma coluna tenha nome diferente no CSV
-colunas_necessarias = FEATURES_CAT + FEATURE_NUM + TARGETS
-faltantes = [c for c in colunas_necessarias if c not in df.columns]
-if faltantes:
-    st.error(f"Colunas não encontradas no CSV: {faltantes}")
-    st.write("Colunas disponíveis no seu arquivo:", list(df.columns))
-    st.stop()
-
-# 2. Treinamento do Modelo Preditivo (fica em cache para rodar instantaneamente)
+# 3. Treinamento com modelos independentes para Conversões e Receita
 @st.cache_resource
-def treinar_modelo(dados):
-    X = dados[FEATURES_CAT + FEATURE_NUM]
+def treinar_modelo(dados, cols_cat, cols_num):
+    X = dados[cols_cat + cols_num]
     y = dados[TARGETS]
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
     preprocessador = ColumnTransformer(
         transformers=[
-            ("cat", OneHotEncoder(handle_unknown="ignore"), FEATURES_CAT),
-            ("num", "passthrough", FEATURE_NUM),
+            ("cat", OneHotEncoder(handle_unknown="ignore"), cols_cat),
+            ("num", "passthrough", cols_num),
         ]
     )
 
     modelo = Pipeline(
         steps=[
             ("prep", preprocessador),
-            ("reg", RandomForestRegressor(n_estimators=100, max_depth=12, random_state=42, n_jobs=-1)),
+            ("reg", MultiOutputRegressor(
+                RandomForestRegressor(n_estimators=150, max_depth=15, random_state=42, n_jobs=-1)
+            )),
         ]
     )
 
     modelo.fit(X_train, y_train)
-    score_r2 = r2_score(y_test, modelo.predict(X_test))
-    return modelo, score_r2
+    preds = modelo.predict(X_test)
+    r2_conv = r2_score(y_test["conversions"], preds[:, 0])
+    r2_rev = r2_score(y_test["revenue"], preds[:, 1])
+    return modelo, r2_conv, r2_rev
 
-modelo, r2 = treinar_modelo(df)
+modelo, r2_conv, r2_rev = treinar_modelo(df, features_cat, features_num)
 
-# 3. Barra Lateral (Simulador de Parâmetros)
+# 4. Barra Lateral (Inputs principais + extras recolhíveis)
 st.sidebar.header("Parâmetros da Campanha")
+valores_usuario = {}
 
-plataforma = st.sidebar.selectbox("Plataforma", sorted(df["platform"].unique()))
-objetivo = st.sidebar.selectbox("Objetivo da Campanha", sorted(df["campaign_objective"].unique()))
-interesse = st.sidebar.selectbox("Interesse do Público", sorted(df["audience_interest_category"].unique()))
-formato = st.sidebar.selectbox("Formato do Criativo", sorted(df["creative_format"].unique()))
+principais_cat = ["platform", "campaign_objective", "audience_interest_category", "creative_format"]
+for col in principais_cat:
+    if col in features_cat:
+        valores_usuario[col] = st.sidebar.selectbox(col.replace("_", " ").title(), sorted(df[col].dropna().unique()))
 
-orcamento = st.sidebar.slider(
+valores_usuario["ad_spend"] = st.sidebar.slider(
     "Orçamento Investido (US$)",
     min_value=float(df["ad_spend"].min()),
     max_value=float(df["ad_spend"].max()),
@@ -77,25 +89,36 @@ orcamento = st.sidebar.slider(
     step=50.0,
 )
 
+extras_cat = [c for c in features_cat if c not in principais_cat]
+extras_num = [c for c in features_num if c != "ad_spend"]
+
+if extras_cat or extras_num:
+    with st.sidebar.expander("Mais parâmetros da campanha"):
+        for col in extras_cat:
+            valores_usuario[col] = st.selectbox(col.replace("_", " ").title(), sorted(df[col].dropna().unique()))
+        for col in extras_num:
+            valores_usuario[col] = st.number_input(
+                col.replace("_", " ").title(),
+                min_value=float(df[col].min()),
+                max_value=float(df[col].max()),
+                value=float(df[col].median()),
+            )
+
 st.sidebar.markdown("---")
-st.sidebar.caption(f"Precisão do Modelo ($R^2$): **{r2:.1%}**")
+st.sidebar.caption(f"Precisão Receita ($R^2$): **{r2_rev:.1%}**")
+st.sidebar.caption(f"Precisão Conversões ($R^2$): **{r2_conv:.1%}**")
 
-# 4. Predição em Tempo Real
-entrada_usuario = pd.DataFrame([{
-    "platform": plataforma,
-    "campaign_objective": objetivo,
-    "audience_interest_category": interesse,
-    "creative_format": formato,
-    "ad_spend": orcamento,
-}])
-
+# 5. Predição em Tempo Real
+entrada_usuario = pd.DataFrame([valores_usuario])[features_cat + features_num]
 predicao = modelo.predict(entrada_usuario)[0]
+
 conv_previstas = max(0, int(round(predicao[0])))
 receita_prevista = max(0.0, float(predicao[1]))
+orcamento = valores_usuario["ad_spend"]
 lucro_previsto = receita_prevista - orcamento
 roas_previsto = receita_prevista / orcamento if orcamento > 0 else 0.0
 
-# 5. Painel Principal
+# 6. Painel Principal
 st.title("Análise Preditiva de Performance de Campanhas")
 st.markdown("Ajuste os filtros na barra lateral para simular o retorno esperado antes de investir.")
 
@@ -107,19 +130,15 @@ col4.metric("ROAS Estimado", f"{roas_previsto:.2f}x")
 
 st.markdown("---")
 
-# 6. Gráficos de Apoio e Curva de Simulação
+# 7. Gráficos
 graf1, graf2 = st.columns(2)
 
 with graf1:
     st.subheader("Curva de Retorno por Orçamento")
     faixa_orcamento = [v for v in range(100, int(df["ad_spend"].max()) + 1, 250)]
-    sim_df = pd.DataFrame({
-        "platform": [plataforma] * len(faixa_orcamento),
-        "campaign_objective": [objetivo] * len(faixa_orcamento),
-        "audience_interest_category": [interesse] * len(faixa_orcamento),
-        "creative_format": [formato] * len(faixa_orcamento),
-        "ad_spend": faixa_orcamento,
-    })
+    sim_df = pd.concat([entrada_usuario] * len(faixa_orcamento), ignore_index=True)
+    sim_df["ad_spend"] = faixa_orcamento
+
     preds_curva = modelo.predict(sim_df)
     sim_df["Receita Prevista (US$)"] = preds_curva[:, 1]
 
@@ -128,7 +147,7 @@ with graf1:
         x="ad_spend",
         y="Receita Prevista (US$)",
         labels={"ad_spend": "Orçamento (US$)"},
-        title=f"Projeção para {plataforma} ({formato})",
+        title=f"Projeção para {valores_usuario.get('platform', '')} ({valores_usuario.get('creative_format', '')})",
     )
     st.plotly_chart(fig_curva, use_container_width=True)
 
