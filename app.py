@@ -25,7 +25,7 @@ PALETA_GRAFICO = ["#f72585", "#d9048e", "#b5179e", "#7209b7", "#9d4edd", "#ff70a
 # 1. Carregamento dos dados
 @st.cache_data
 def carregar_dados():
-    dados = pd.read_csv("data/campaigns_dataset.csv")
+    dados = pd.read_csv("campaigns_dataset.csv")
     dados["roas"] = (dados["revenue"] / dados["ad_spend"].replace(0, pd.NA)).fillna(0)
     return dados
 
@@ -157,4 +157,40 @@ with graf1:
         x="ad_spend",
         y="Receita Prevista (US$)",
         labels={"ad_spend": "Orçamento (US$)"},
-        title=f"Pro
+        title=f"Projeção para {valores_usuario.get('platform', '')} ({valores_usuario.get('creative_format', '')})",
+    )
+    fig_curva.update_traces(
+        line=dict(color=COR_ROSA_PRINCIPAL, width=3.5),
+        fill="tozeroy",
+        fillcolor="rgba(247, 37, 133, 0.15)"
+    )
+    fig_curva.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#ffffff"),
+        xaxis=dict(gridcolor="rgba(255,255,255,0.1)"),
+        yaxis=dict(gridcolor="rgba(255,255,255,0.1)"),
+    )
+    st.plotly_chart(fig_curva, use_container_width=True)
+
+with graf2:
+    st.subheader("ROAS Médio Histórico por Plataforma")
+    df_plat = df.groupby("platform", as_index=False)["roas"].mean().sort_values("roas", ascending=False)
+    fig_bar = px.bar(
+        df_plat,
+        x="platform",
+        y="roas",
+        color="platform",
+        color_discrete_sequence=PALETA_GRAFICO,
+        labels={"platform": "Plataforma", "roas": "ROAS Médio"},
+        title="Comparativo Geral da Base Histórica",
+    )
+    fig_bar.update_layout(
+        showlegend=False,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#ffffff"),
+        xaxis=dict(gridcolor="rgba(255,255,255,0.1)"),
+        yaxis=dict(gridcolor="rgba(255,255,255,0.1)"),
+    )
+    st.plotly_chart(fig_bar, use_container_width=True)
