@@ -25,7 +25,7 @@ PALETA_GRAFICO = ["#f72585", "#d9048e", "#b5179e", "#7209b7", "#9d4edd", "#ff70a
 # 1. Carregamento dos dados
 @st.cache_data
 def carregar_dados():
-    dados = pd.read_csv("campaigns_dataset.csv")
+    dados = pd.read_csv("data/campaigns_dataset.csv")
     dados["roas"] = (dados["revenue"] / dados["ad_spend"].replace(0, pd.NA)).fillna(0)
     return dados
 
